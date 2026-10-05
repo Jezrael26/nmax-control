@@ -33,8 +33,12 @@ import java.util.UUID
 class BikeService : Service() {
 
     companion object {
-        val SERVICE_UUID: UUID = UUID.fromString("afa2cdf4-eccf-46a7-a5ea-9da428c0157a")
-        val CCCD: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+        val SERVICE_UUID: UUID =
+            UUID.fromString("afa2cdf4-eccf-46a7-a5ea-9da428c0157a")
+
+        val CCCD: UUID =
+            UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+
         val NOTIFY_UUIDS: List<UUID> = listOf(
             "9c810d26-b605-4306-8c1c-755a1ba3066c",
             "75ab2788-87f6-4f61-ba9c-6f85a12600d1",
@@ -43,42 +47,67 @@ class BikeService : Service() {
             "e974b9a1-fa31-43c6-91ae-09931f3f6ef1"
         ).map { UUID.fromString(it) }
 
-        const val BUTTONS = "9c810d26"   // first 8 chars of the characteristic UUID
+        const val BUTTONS = "9c810d26"
         const val STREAM = "e974b9a1"
-        const val VOL_UP = "01-1D-05"     // guess from the log: confirm on the device
+
+        const val VOL_UP = "01-1D-05"
         const val VOL_DOWN = "01-1D-06"
+
         const val NAME_PREFIX = "YCCU_"
         const val CHANNEL_ID = "bike"
     }
 
     private val handler = Handler(Looper.getMainLooper())
+
     private var adapter: BluetoothAdapter? = null
     private var gatt: BluetoothGatt? = null
+
     private var scanning = false
     private var connected = false
     private var attempt = 0
+
     private val seen = HashSet<String>()
+
     private var bestNonConnectable: ScanResult? = null
-    private val pending = ArrayDeque<BluetoothGattCharacteristic>()
+
+    private val pending =
+        ArrayDeque<BluetoothGattCharacteristic>()
+
     private lateinit var audio: AudioManager
 
-    private val retryRunnable = Runnable { findBike() }
+    private val retryRunnable = Runnable {
+        findBike()
+    }
+
     private val scanTimeout = Runnable {
         if (scanning) {
             stopScan()
+
             val fb = bestNonConnectable
+
             if (fb != null) {
-                BikeState.add("No connectable advert seen, trying the strongest one: ${fb.device.address}")
+                BikeState.add(
+                    "No connectable advert seen, trying strongest one: " +
+                        fb.device.address
+                )
+
                 connect(fb.device)
             } else {
-                BikeState.add("Bike not seen in scan, trying again")
+                BikeState.add(
+                    "Bike not seen in scan, trying again"
+                )
+
                 retry(1000)
             }
         }
     }
+
     private val connectTimeout = Runnable {
         if (!connected) {
-            BikeState.add("Connect timeout, trying again")
+            BikeState.add(
+                "Connect timeout, trying again"
+            )
+
             closeGatt()
             retry(500)
         }
@@ -88,59 +117,115 @@ class BikeService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        audio = getSystemService(AUDIO_SERVICE) as AudioManager
-        adapter = (getSystemService(BLUETOOTH_SERVICE) as BluetoothManager).adapter
-        BikeState.learnedKey = getSharedPreferences("nmax", MODE_PRIVATE).getString("learned", null)
+
+        audio =
+            getSystemService(AUDIO_SERVICE) as AudioManager
+
+        adapter =
+            (getSystemService(BLUETOOTH_SERVICE) as BluetoothManager)
+                .adapter
+
+        BikeState.learnedKey =
+            getSharedPreferences("nmax", MODE_PRIVATE)
+                .getString("learned", null)
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    override fun onStartCommand(
+        intent: Intent?,
+        flags: Int,
+        startId: Int
+    ): Int {
+
         startAsForeground()
-        val chosen = intent?.getStringExtra("address")
+
+        val chosen =
+            intent?.getStringExtra("address")
+
         if (!BikeState.running) {
             BikeState.running = true
             BikeState.status = "Starting..."
             BikeState.add("Service started")
-            if (chosen == null) findBike()
+
+            if (chosen == null) {
+                findBike()
+            }
         }
+
         if (chosen != null) {
             handler.removeCallbacks(retryRunnable)
+
             stopScan()
-            val dev = adapter?.getRemoteDevice(chosen)
+
+            val dev =
+                adapter?.getRemoteDevice(chosen)
+
             if (dev != null) {
-                BikeState.add("Connecting to the chosen device $chosen")
+                BikeState.add(
+                    "Connecting to chosen device $chosen"
+                )
+
                 connect(dev)
             }
         }
+
         return START_STICKY
     }
 
     override fun onDestroy() {
         BikeState.running = false
+
         handler.removeCallbacksAndMessages(null)
+
         stopScan()
         closeGatt()
+
         BikeState.status = "Stopped"
         BikeState.add("Service stopped")
+
         super.onDestroy()
     }
 
     private fun startAsForeground() {
-        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+
+        val nm =
+            getSystemService(NOTIFICATION_SERVICE)
+                as NotificationManager
+
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "Bike connection", NotificationManager.IMPORTANCE_LOW)
+            NotificationChannel(
+                CHANNEL_ID,
+                "Bike connection",
+                NotificationManager.IMPORTANCE_LOW
+            )
         )
-        val pi = PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE
-        )
-        val n = Notification.Builder(this, CHANNEL_ID)
-            .setContentTitle("NMAX Control")
-            .setContentText("Listening to the bike buttons")
-            .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
-            .setContentIntent(pi)
-            .setOngoing(true)
-            .build()
+
+        val pi =
+            PendingIntent.getActivity(
+                this,
+                0,
+                Intent(this, MainActivity::class.java),
+                PendingIntent.FLAG_IMMUTABLE
+            )
+
+        val n =
+            Notification.Builder(this, CHANNEL_ID)
+                .setContentTitle("NMAX Control")
+                .setContentText(
+                    "Listening to the bike buttons"
+                )
+                .setSmallIcon(
+                    android.R.drawable.stat_sys_data_bluetooth
+                )
+                .setContentIntent(pi)
+                .setOngoing(true)
+                .build()
+
         if (Build.VERSION.SDK_INT >= 29) {
-            startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+            startForeground(
+                1,
+                n,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+            )
         } else {
             startForeground(1, n)
         }
@@ -150,316 +235,807 @@ class BikeService : Service() {
 
     private fun retry(ms: Long) {
         handler.removeCallbacks(retryRunnable)
-        handler.postDelayed(retryRunnable, ms)
+        handler.postDelayed(
+            retryRunnable,
+            ms
+        )
     }
 
     private fun findBike() {
+
         if (!BikeState.running) return
+
         val a = adapter
+
         if (a == null || !a.isEnabled) {
-            BikeState.status = "Bluetooth is off - please turn it on"
+
+            BikeState.status =
+                "Bluetooth is off - please turn it on"
+
             retry(3000)
             return
         }
-        val mgr = getSystemService(BLUETOOTH_SERVICE) as BluetoothManager
-        val live = mgr.getConnectedDevices(BluetoothProfile.GATT)
-        BikeState.add("Phone-connected devices: " + live.joinToString { "${it.name}/${it.address}" })
-        val joined = live.firstOrNull { it.name?.startsWith(NAME_PREFIX) == true }
+
+        val mgr =
+            getSystemService(BLUETOOTH_SERVICE)
+                as BluetoothManager
+
+        val live =
+            mgr.getConnectedDevices(
+                BluetoothProfile.GATT
+            )
+
+        BikeState.add(
+            "Phone-connected devices: " +
+                live.joinToString {
+                    "${it.name}/${it.address}"
+                }
+        )
+
+        val joined =
+            live.firstOrNull {
+                it.name?.startsWith(NAME_PREFIX) == true
+            }
+
         if (joined != null) {
-            BikeState.add("Bike is already connected to this phone, joining")
+
+            BikeState.add(
+                "Bike is already connected to this phone, joining"
+            )
+
             connect(joined, true)
             return
         }
-        val bonded = a.bondedDevices?.firstOrNull { it.name?.startsWith(NAME_PREFIX) == true }
-        val useBonded = bonded != null && attempt % 2 == 0
+
+        val bonded =
+            a.bondedDevices?.firstOrNull {
+                it.name?.startsWith(NAME_PREFIX) == true
+            }
+
+        val useBonded =
+            bonded != null && attempt % 2 == 0
+
         attempt++
+
         if (useBonded && bonded != null) {
-            BikeState.add("Trying paired device ${bonded.address}")
+
+            BikeState.add(
+                "Trying paired device ${bonded.address}"
+            )
+
             connect(bonded, true)
+
         } else {
             startScan()
         }
     }
 
     private fun startScan() {
-        val scanner = adapter?.bluetoothLeScanner
+
+        val scanner =
+            adapter?.bluetoothLeScanner
+
         if (scanner == null) {
             retry(3000)
             return
         }
-        BikeState.status = "Searching for the bike..."
+
+        BikeState.status =
+            "Searching for the bike..."
+
         seen.clear()
         bestNonConnectable = null
         scanning = true
+
+        /*
+         * Do not force legacy=false.
+         * This allows both legacy and extended advertisements.
+         */
+        val settings =
+            ScanSettings.Builder()
+                .setScanMode(
+                    ScanSettings.SCAN_MODE_LOW_LATENCY
+                )
+                .build()
+
         scanner.startScan(
             null,
-            scanner.startScan(
-    null,
-    ScanSettings.Builder()
-        .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-        .build(),
-    scanCallback
-)
-        handler.postDelayed(scanTimeout, 15000)
+            settings,
+            scanCallback
+        )
+
+        BikeState.add(
+            "BLE scan started"
+        )
+
+        handler.postDelayed(
+            scanTimeout,
+            15000
+        )
     }
 
     private fun stopScan() {
+
         if (!scanning) return
+
         scanning = false
-        handler.removeCallbacks(scanTimeout)
+
+        handler.removeCallbacks(
+            scanTimeout
+        )
+
         try {
-            adapter?.bluetoothLeScanner?.stopScan(scanCallback)
-        } catch (e: Exception) {
+            adapter
+                ?.bluetoothLeScanner
+                ?.stopScan(scanCallback)
+        } catch (_: Exception) {
             // ignore
         }
     }
 
-    private val scanCallback = object : ScanCallback() {
-        override fun onScanResult(callbackType: Int, result: ScanResult) {
-            if (!scanning) return
-            val name = result.scanRecord?.deviceName ?: result.device.name
-            val hasService = result.scanRecord?.serviceUuids?.any { it.uuid == SERVICE_UUID } == true
-            if (name?.startsWith(NAME_PREFIX) != true && !hasService) return
-            val key = "${result.device.address}|${result.isConnectable}"
-            if (seen.add(key)) {
-                val raw = result.scanRecord?.bytes?.take(32)?.joinToString("") { "%02X".format(it) }
-                BikeState.add("Seen $name ${result.device.address} connectable=${result.isConnectable} legacy=${result.isLegacy} rssi=${result.rssi} raw=$raw")
+    private val scanCallback =
+        object : ScanCallback() {
+
+            override fun onScanResult(
+                callbackType: Int,
+                result: ScanResult
+            ) {
+
+                if (!scanning) return
+
+                val name =
+                    result.scanRecord?.deviceName
+                        ?: result.device.name
+
+                val hasService =
+                    result.scanRecord
+                        ?.serviceUuids
+                        ?.any {
+                            it.uuid == SERVICE_UUID
+                        } == true
+
+                if (
+                    name?.startsWith(NAME_PREFIX) != true &&
+                    !hasService
+                ) {
+                    return
+                }
+
+                val key =
+                    "${result.device.address}|${result.isConnectable}"
+
+                if (seen.add(key)) {
+
+                    val raw =
+                        result.scanRecord
+                            ?.bytes
+                            ?.take(32)
+                            ?.joinToString("") {
+                                "%02X".format(it)
+                            }
+
+                    BikeState.add(
+                        "Seen $name " +
+                            "${result.device.address} " +
+                            "connectable=${result.isConnectable} " +
+                            "legacy=${result.isLegacy} " +
+                            "rssi=${result.rssi} " +
+                            "raw=$raw"
+                    )
+                }
+
+                if (result.isConnectable) {
+
+                    stopScan()
+                    connect(result.device)
+
+                } else {
+
+                    val b =
+                        bestNonConnectable
+
+                    if (
+                        b == null ||
+                        result.rssi > b.rssi
+                    ) {
+                        bestNonConnectable = result
+                    }
+                }
             }
-            if (result.isConnectable) {
-                stopScan()
-                connect(result.device)
-            } else {
-                val b = bestNonConnectable
-                if (b == null || result.rssi > b.rssi) bestNonConnectable = result
+
+            override fun onScanFailed(
+                errorCode: Int
+            ) {
+
+                scanning = false
+
+                BikeState.add(
+                    "Scan failed: $errorCode"
+                )
+
+                retry(3000)
             }
         }
 
-        override fun onScanFailed(errorCode: Int) {
-            scanning = false
-            BikeState.add("Scan failed: $errorCode")
-            retry(3000)
-        }
-    }
+    private fun connect(
+        device: BluetoothDevice,
+        auto: Boolean = false
+    ) {
 
-    private fun connect(device: BluetoothDevice, auto: Boolean = false) {
-        BikeState.status = "Connecting..."
+        BikeState.status =
+            "Connecting..."
+
+        BikeState.add(
+            "Opening GATT to ${device.address}"
+        )
+
         closeGatt()
-        gatt = device.connectGatt(this, auto, gattCallback, BluetoothDevice.TRANSPORT_LE)
-        handler.postDelayed(connectTimeout, if (auto) 90000L else 20000L)
+
+        gatt =
+            device.connectGatt(
+                this,
+                auto,
+                gattCallback,
+                BluetoothDevice.TRANSPORT_LE
+            )
+
+        handler.postDelayed(
+            connectTimeout,
+            if (auto) 90000L else 20000L
+        )
     }
 
     private fun closeGatt() {
-        handler.removeCallbacks(connectTimeout)
+
+        handler.removeCallbacks(
+            connectTimeout
+        )
+
         pending.clear()
+
         connected = false
+
         val g = gatt
         gatt = null
+
         if (g != null) {
+
             try {
                 g.disconnect()
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 // ignore
             }
-            g.close()
+
+            try {
+                g.close()
+            } catch (_: Exception) {
+                // ignore
+            }
         }
     }
 
     // ---------- GATT ----------
 
-    private val gattCallback = object : BluetoothGattCallback() {
-        override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
-            if (newState == BluetoothProfile.STATE_CONNECTED) {
-                if (gatt !== g) return
-                connected = true
-                handler.removeCallbacks(connectTimeout)
-                BikeState.status = "Connected, setting up..."
-                BikeState.add("Connected (status $status)")
-                handler.postDelayed({ if (gatt === g) g.discoverServices() }, 600)
-            } else {
-                BikeState.add("Disconnected (status $status)")
-                if (gatt === g) {
-                    closeGatt()
-                    BikeState.status = "Disconnected - reconnecting..."
-                    retry(3000)
+    private val gattCallback =
+        object : BluetoothGattCallback() {
+
+            override fun onConnectionStateChange(
+                g: BluetoothGatt,
+                status: Int,
+                newState: Int
+            ) {
+
+                if (
+                    newState ==
+                    BluetoothProfile.STATE_CONNECTED
+                ) {
+
+                    if (gatt !== g) return
+
+                    connected = true
+
+                    handler.removeCallbacks(
+                        connectTimeout
+                    )
+
+                    BikeState.status =
+                        "Connected, setting up..."
+
+                    BikeState.add(
+                        "GATT connected: status=$status"
+                    )
+
+                    handler.postDelayed(
+                        {
+                            if (gatt === g) {
+                                BikeState.add(
+                                    "Starting service discovery..."
+                                )
+
+                                val started =
+                                    g.discoverServices()
+
+                                BikeState.add(
+                                    "discoverServices() started=$started"
+                                )
+                            }
+                        },
+                        600
+                    )
+
                 } else {
-                    g.close()
+
+                    BikeState.add(
+                        "Disconnected: status=$status"
+                    )
+
+                    if (gatt === g) {
+
+                        closeGatt()
+
+                        BikeState.status =
+                            "Disconnected - reconnecting..."
+
+                        retry(3000)
+
+                    } else {
+
+                        try {
+                            g.close()
+                        } catch (_: Exception) {
+                            // ignore
+                        }
+                    }
+                }
+            }
+
+            override fun onServicesDiscovered(
+                g: BluetoothGatt,
+                status: Int
+            ) {
+
+                if (gatt !== g) return
+
+                BikeState.add(
+                    "Services discovered: status=$status"
+                )
+
+                if (
+                    status !=
+                    BluetoothGatt.GATT_SUCCESS
+                ) {
+
+                    BikeState.add(
+                        "Service discovery failed: $status"
+                    )
+
+                    g.disconnect()
+                    return
+                }
+
+                val svc =
+                    g.getService(SERVICE_UUID)
+
+                if (svc == null) {
+
+                    BikeState.add(
+                        "NMAX service NOT found: $SERVICE_UUID"
+                    )
+
+                    BikeState.add(
+                        "Available services: " +
+                            g.services.joinToString {
+                                it.uuid.toString()
+                            }
+                    )
+
+                    g.disconnect()
+                    return
+                }
+
+                BikeState.add(
+                    "NMAX service FOUND: ${svc.uuid}"
+                )
+
+                pending.clear()
+
+                for (u in NOTIFY_UUIDS) {
+
+                    val ch =
+                        svc.getCharacteristic(u)
+
+                    if (ch != null) {
+
+                        BikeState.add(
+                            "Characteristic FOUND: ${ch.uuid}"
+                        )
+
+                        pending.addLast(ch)
+
+                    } else {
+
+                        BikeState.add(
+                            "Characteristic missing: $u"
+                        )
+                    }
+                }
+
+                BikeState.add(
+                    "Requesting MTU 512..."
+                )
+
+                val mtuStarted =
+                    try {
+                        g.requestMtu(512)
+                    } catch (e: Exception) {
+
+                        BikeState.add(
+                            "MTU request exception: ${e.message}"
+                        )
+
+                        false
+                    }
+
+                if (!mtuStarted) {
+
+                    BikeState.add(
+                        "MTU request could not start; continuing"
+                    )
+
+                    subscribeNext(g)
+                }
+            }
+
+            override fun onMtuChanged(
+                g: BluetoothGatt,
+                mtu: Int,
+                status: Int
+            ) {
+
+                if (gatt !== g) return
+
+                BikeState.add(
+                    "MTU result: mtu=$mtu status=$status"
+                )
+
+                if (
+                    status ==
+                    BluetoothGatt.GATT_SUCCESS
+                ) {
+
+                    BikeState.add(
+                        "MTU negotiation successful"
+                    )
+
+                } else {
+
+                    BikeState.add(
+                        "MTU negotiation failed; " +
+                            "using default MTU"
+                    )
+                }
+
+                subscribeNext(g)
+            }
+
+            override fun onDescriptorWrite(
+                g: BluetoothGatt,
+                d: BluetoothGattDescriptor,
+                status: Int
+            ) {
+
+                if (gatt !== g) return
+
+                BikeState.add(
+                    "Descriptor write: " +
+                        "${d.characteristicUuid} " +
+                        "status=$status"
+                )
+
+                if (
+                    status !=
+                    BluetoothGatt.GATT_SUCCESS
+                ) {
+                    BikeState.add(
+                        "Descriptor write failed"
+                    )
+                }
+
+                subscribeNext(g)
+            }
+
+            // Android 13+
+            override fun onCharacteristicChanged(
+                g: BluetoothGatt,
+                ch: BluetoothGattCharacteristic,
+                value: ByteArray
+            ) {
+
+                if (gatt !== g) return
+
+                handlePacket(
+                    ch.uuid,
+                    value
+                )
+            }
+
+            // Android 12 and below
+            override fun onCharacteristicChanged(
+                g: BluetoothGatt,
+                ch: BluetoothGattCharacteristic
+            ) {
+
+                if (Build.VERSION.SDK_INT < 33) {
+
+                    if (gatt !== g) return
+
+                    val v =
+                        ch.value ?: return
+
+                    handlePacket(
+                        ch.uuid,
+                        v
+                    )
                 }
             }
         }
 
-        override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
-    if (gatt !== g) return
+    private fun subscribeNext(
+        g: BluetoothGatt
+    ) {
 
-    BikeState.add("Services discovered: status=$status")
+        if (gatt !== g) return
 
-    if (status != BluetoothGatt.GATT_SUCCESS) {
-        BikeState.add("Service discovery failed: $status")
-        g.disconnect()
-        return
-    }
+        val ch =
+            pending.removeFirstOrNull()
 
-override fun onMtuChanged(
-    g: BluetoothGatt,
-    mtu: Int,
-    status: Int
-) {
-    if (gatt !== g) return
-
-    BikeState.add("MTU result: mtu=$mtu status=$status")
-
-    if (status == BluetoothGatt.GATT_SUCCESS) {
-        BikeState.add("MTU negotiation successful")
-    } else {
-        BikeState.add("MTU negotiation failed; using default MTU")
-    }
-
-    subscribeNext(g)
-}
-    val svc = g.getService(SERVICE_UUID)
-
-    if (svc == null) {
-        BikeState.add("Bike service NOT found: $SERVICE_UUID")
-        BikeState.add(
-            "Available services: " +
-                g.services.joinToString { it.uuid.toString() }
-        )
-        g.disconnect()
-        return
-    }
-
-    BikeState.add("NMAX service FOUND: ${svc.uuid}")
-
-    pending.clear()
-
-    for (u in NOTIFY_UUIDS) {
-        val ch = svc.getCharacteristic(u)
-
-        if (ch != null) {
-            BikeState.add("Characteristic FOUND: ${ch.uuid}")
-            pending.addLast(ch)
-        } else {
-            BikeState.add("Characteristic missing: $u")
-        }
-    }
-
-    BikeState.add("Requesting MTU 512...")
-
-    val mtuStarted = try {
-        g.requestMtu(512)
-    } catch (e: Exception) {
-        BikeState.add("MTU request exception: ${e.message}")
-        false
-    }
-
-    if (!mtuStarted) {
-        BikeState.add("MTU request could not start; continuing")
-        subscribeNext(g)
-    }
-}
-
-        override fun onDescriptorWrite(g: BluetoothGatt, d: BluetoothGattDescriptor, status: Int) {
-            subscribeNext(g)
-        }
-
-        // Android 13+
-        override fun onCharacteristicChanged(
-            g: BluetoothGatt, ch: BluetoothGattCharacteristic, value: ByteArray
-        ) {
-            handlePacket(ch.uuid, value)
-        }
-
-        // Android 12 and below
-        override fun onCharacteristicChanged(g: BluetoothGatt, ch: BluetoothGattCharacteristic) {
-            if (Build.VERSION.SDK_INT < 33) {
-                val v = ch.value ?: return
-                handlePacket(ch.uuid, v)
-            }
-        }
-    }
-
-    private fun subscribeNext(g: BluetoothGatt) {
-        val ch = pending.removeFirstOrNull()
         if (ch == null) {
-            BikeState.status = "Connected - ready"
-            BikeState.add("Notifications enabled")
+
+            BikeState.status =
+                "Connected - ready"
+
+            BikeState.add(
+                "Notifications enabled"
+            )
+
             return
         }
-        g.setCharacteristicNotification(ch, true)
-        val d = ch.getDescriptor(CCCD)
+
+        BikeState.add(
+            "Enabling notification: ${ch.uuid}"
+        )
+
+        val localOk =
+            try {
+                g.setCharacteristicNotification(
+                    ch,
+                    true
+                )
+            } catch (e: Exception) {
+
+                BikeState.add(
+                    "setCharacteristicNotification " +
+                        "exception: ${e.message}"
+                )
+
+                false
+            }
+
+        if (!localOk) {
+
+            BikeState.add(
+                "Could not enable local notification " +
+                    "for ${ch.uuid}"
+            )
+
+            subscribeNext(g)
+            return
+        }
+
+        val d =
+            ch.getDescriptor(CCCD)
+
         if (d == null) {
-    BikeState.add("No CCCD for ${ch.uuid}; skipping")
-    subscribeNext(g)
-    return
-}
+
+            BikeState.add(
+                "No CCCD for ${ch.uuid}; skipping"
+            )
+
+            subscribeNext(g)
+            return
         }
-        val ok: Boolean = if (Build.VERSION.SDK_INT >= 33) {
-            g.writeDescriptor(d, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE) ==
-                BluetoothStatusCodes.SUCCESS
+
+        val ok: Boolean
+
+        if (Build.VERSION.SDK_INT >= 33) {
+
+            ok =
+                g.writeDescriptor(
+                    d,
+                    BluetoothGattDescriptor
+                        .ENABLE_NOTIFICATION_VALUE
+                ) ==
+                    BluetoothStatusCodes.SUCCESS
+
         } else {
-            d.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-            g.writeDescriptor(d)
+
+            d.value =
+                BluetoothGattDescriptor
+                    .ENABLE_NOTIFICATION_VALUE
+
+            ok =
+                g.writeDescriptor(d)
         }
-if (!ok) {
-    BikeState.add(
-        "Could not start descriptor write for ${ch.uuid}"
-    )
-    subscribeNext(g)
-}
+
         if (!ok) {
-            BikeState.add("Could not enable notifications for ${ch.uuid}")
+
+            BikeState.add(
+                "Could not start descriptor write " +
+                    "for ${ch.uuid}"
+            )
+
             subscribeNext(g)
         }
     }
 
     // ---------- reacting to the bike ----------
 
-    private fun handlePacket(uuid: UUID, v: ByteArray) {
-        val short = uuid.toString().substring(0, 8)
-        val hex = v.joinToString("-") { "%02X".format(it) }
+    private fun handlePacket(
+        uuid: UUID,
+        v: ByteArray
+    ) {
+
+        val short =
+            uuid.toString()
+                .substring(0, 8)
+
+        val hex =
+            v.joinToString("-") {
+                "%02X".format(it)
+            }
 
         if (short == STREAM) {
-            BikeState.addStream(v, hex)
+
+            BikeState.addStream(
+                v,
+                hex
+            )
+
             return
         }
 
-        BikeState.add("$short  $hex")
-        val key = "$short|$hex"
-        val isVolume = short == BUTTONS && (hex == VOL_UP || hex == VOL_DOWN)
+        BikeState.add(
+            "$short  $hex"
+        )
 
-        if (BikeState.isLearning() && !isVolume) {
+        val key =
+            "$short|$hex"
+
+        val isVolume =
+            short == BUTTONS &&
+                (
+                    hex == VOL_UP ||
+                    hex == VOL_DOWN
+                )
+
+        if (
+            BikeState.isLearning() &&
+            !isVolume
+        ) {
+
             BikeState.learnUntil = 0L
+
             BikeState.learnedKey = key
-            getSharedPreferences("nmax", MODE_PRIVATE).edit().putString("learned", key).apply()
-            BikeState.lastAction = "Learned Play/Pause = $key"
+
+            getSharedPreferences(
+                "nmax",
+                MODE_PRIVATE
+            )
+                .edit()
+                .putString(
+                    "learned",
+                    key
+                )
+                .apply()
+
+            BikeState.lastAction =
+                "Learned Play/Pause = $key"
+
             return
         }
 
         when {
-            short == BUTTONS && hex == VOL_UP -> volume(true)
-            short == BUTTONS && hex == VOL_DOWN -> volume(false)
-            short == BUTTONS && (hex == "01-17-03" || hex == "01-17-04") -> playPause()
-            short == BUTTONS && hex == "01-17-01" -> mediaKey(KeyEvent.KEYCODE_MEDIA_NEXT, "Next track")
-            short == BUTTONS && hex == "01-17-02" -> volume(false)
-            key == BikeState.learnedKey -> playPause()
+
+            short == BUTTONS &&
+                hex == VOL_UP -> {
+
+                volume(true)
+            }
+
+            short == BUTTONS &&
+                hex == VOL_DOWN -> {
+
+                volume(false)
+            }
+
+            short == BUTTONS &&
+                (
+                    hex == "01-17-03" ||
+                    hex == "01-17-04"
+                ) -> {
+
+                playPause()
+            }
+
+            short == BUTTONS &&
+                hex == "01-17-01" -> {
+
+                mediaKey(
+                    KeyEvent.KEYCODE_MEDIA_NEXT,
+                    "Next track"
+                )
+            }
+
+            short == BUTTONS &&
+                hex == "01-17-02" -> {
+
+                volume(false)
+            }
+
+            key == BikeState.learnedKey -> {
+
+                playPause()
+            }
         }
     }
 
-    private fun volume(up: Boolean) {
+    private fun volume(
+        up: Boolean
+    ) {
+
         audio.adjustStreamVolume(
             AudioManager.STREAM_MUSIC,
-            if (up) AudioManager.ADJUST_RAISE else AudioManager.ADJUST_LOWER,
+            if (up)
+                AudioManager.ADJUST_RAISE
+            else
+                AudioManager.ADJUST_LOWER,
             AudioManager.FLAG_SHOW_UI
         )
-        BikeState.lastAction = if (up) "Volume up" else "Volume down"
+
+        BikeState.lastAction =
+            if (up)
+                "Volume up"
+            else
+                "Volume down"
     }
 
-    private fun mediaKey(code: Int, label: String) {
-        audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code))
-        audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, code))
+    private fun mediaKey(
+        code: Int,
+        label: String
+    ) {
+
+        audio.dispatchMediaKeyEvent(
+            KeyEvent(
+                KeyEvent.ACTION_DOWN,
+                code
+            )
+        )
+
+        audio.dispatchMediaKeyEvent(
+            KeyEvent(
+                KeyEvent.ACTION_UP,
+                code
+            )
+        )
+
         BikeState.lastAction = label
     }
 
     private fun playPause() {
-        mediaKey(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, "Play/Pause")
+
+        mediaKey(
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+            "Play/Pause"
+        )
     }
 }
