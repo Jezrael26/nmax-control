@@ -345,7 +345,7 @@ class BikeService : Service() {
             short == BUTTONS && hex == VOL_DOWN -> volume(false)
                         short == BUTTONS && (hex == "01-17-03" || hex == "01-17-04") -> playPause()
             short == BUTTONS && hex == "01-17-01" -> mediaKey(KeyEvent.KEYCODE_MEDIA_NEXT, "Next track")
-            short == BUTTONS && hex == "01-17-02" -> mediaKey(KeyEvent.KEYCODE_MEDIA_PREVIOUS, "Previous track")
+            short == BUTTONS && hex == "01-17-02" -> volume(false)
             key == BikeState.learnedKey -> playPause()
         }
     }
