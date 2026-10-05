@@ -298,6 +298,23 @@ class BikeService : Service() {
         return
     }
 
+override fun onMtuChanged(
+    g: BluetoothGatt,
+    mtu: Int,
+    status: Int
+) {
+    if (gatt !== g) return
+
+    BikeState.add("MTU result: mtu=$mtu status=$status")
+
+    if (status == BluetoothGatt.GATT_SUCCESS) {
+        BikeState.add("MTU negotiation successful")
+    } else {
+        BikeState.add("MTU negotiation failed; using default MTU")
+    }
+
+    subscribeNext(g)
+}
     val svc = g.getService(SERVICE_UUID)
 
     if (svc == null) {
@@ -370,8 +387,10 @@ class BikeService : Service() {
         g.setCharacteristicNotification(ch, true)
         val d = ch.getDescriptor(CCCD)
         if (d == null) {
-            subscribeNext(g)
-            return
+    BikeState.add("No CCCD for ${ch.uuid}; skipping")
+    subscribeNext(g)
+    return
+}
         }
         val ok: Boolean = if (Build.VERSION.SDK_INT >= 33) {
             g.writeDescriptor(d, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE) ==
@@ -380,6 +399,12 @@ class BikeService : Service() {
             d.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
             g.writeDescriptor(d)
         }
+if (!ok) {
+    BikeState.add(
+        "Could not start descriptor write for ${ch.uuid}"
+    )
+    subscribeNext(g)
+}
         if (!ok) {
             BikeState.add("Could not enable notifications for ${ch.uuid}")
             subscribeNext(g)
