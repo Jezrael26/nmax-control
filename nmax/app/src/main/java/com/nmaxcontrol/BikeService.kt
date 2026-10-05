@@ -183,7 +183,7 @@ class BikeService : Service() {
         scanning = true
         scanner.startScan(
             null,
-            ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build(),
+            connectable=${result.isConnectable} legacy=${result.isLegacy} rssi=,
             scanCallback
         )
         handler.postDelayed(scanTimeout, 15000)
