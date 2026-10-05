@@ -203,8 +203,8 @@ class BikeService : Service() {
     private fun connect(device: BluetoothDevice) {
         BikeState.status = "Connecting..."
         closeGatt()
-        gatt = device.connectGatt(this, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
-        handler.postDelayed(connectTimeout, 20000)
+        gatt = device.connectGatt(this, true, gattCallback, BluetoothDevice.TRANSPORT_LE)
+        handler.postDelayed(connectTimeout, 90000)
     }
 
     private fun closeGatt() {
