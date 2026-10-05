@@ -57,6 +57,8 @@ class BikeService : Service() {
     private var scanning = false
     private var connected = false
     private var attempt = 0
+    private val seen = HashSet<String>()
+    private var bestNonConnectable: ScanResult? = null
     private val pending = ArrayDeque<BluetoothGattCharacteristic>()
     private lateinit var audio: AudioManager
 
@@ -64,8 +66,14 @@ class BikeService : Service() {
     private val scanTimeout = Runnable {
         if (scanning) {
             stopScan()
-            BikeState.add("Scan timeout, trying again")
-            retry(1000)
+            val fb = bestNonConnectable
+            if (fb != null) {
+                BikeState.add("No connectable advert seen, trying the strongest one: ${fb.device.address}")
+                connect(fb.device)
+            } else {
+                BikeState.add("Bike not seen in scan, trying again")
+                retry(1000)
+            }
         }
     }
     private val connectTimeout = Runnable {
@@ -143,14 +151,13 @@ class BikeService : Service() {
             retry(3000)
             return
         }
-                val mgr = getSystemService(BLUETOOTH_SERVICE) as BluetoothManager
+        val mgr = getSystemService(BLUETOOTH_SERVICE) as BluetoothManager
         val live = mgr.getConnectedDevices(BluetoothProfile.GATT)
         BikeState.add("Phone-connected devices: " + live.joinToString { "${it.name}/${it.address}" })
-        BikeState.add("Paired devices: " + (a.bondedDevices ?: emptySet()).joinToString { "${it.name}/${it.address}" })
         val joined = live.firstOrNull { it.name?.startsWith(NAME_PREFIX) == true }
         if (joined != null) {
             BikeState.add("Bike is already connected to this phone, joining")
-            connect(joined)
+            connect(joined, true)
             return
         }
         val bonded = a.bondedDevices?.firstOrNull { it.name?.startsWith(NAME_PREFIX) == true }
@@ -158,7 +165,7 @@ class BikeService : Service() {
         attempt++
         if (useBonded && bonded != null) {
             BikeState.add("Trying paired device ${bonded.address}")
-            connect(bonded)
+            connect(bonded, true)
         } else {
             startScan()
         }
@@ -171,6 +178,8 @@ class BikeService : Service() {
             return
         }
         BikeState.status = "Searching for the bike..."
+        seen.clear()
+        bestNonConnectable = null
         scanning = true
         scanner.startScan(
             null,
@@ -196,11 +205,18 @@ class BikeService : Service() {
             if (!scanning) return
             val name = result.scanRecord?.deviceName ?: result.device.name
             val hasService = result.scanRecord?.serviceUuids?.any { it.uuid == SERVICE_UUID } == true
-            if (name?.startsWith(NAME_PREFIX) == true || hasService) {
+            if (name?.startsWith(NAME_PREFIX) != true && !hasService) return
+            val key = "${result.device.address}|${result.isConnectable}"
+            if (seen.add(key)) {
+                val raw = result.scanRecord?.bytes?.take(32)?.joinToString("") { "%02X".format(it) }
+                BikeState.add("Seen $name ${result.device.address} connectable=${result.isConnectable} rssi=${result.rssi} raw=$raw")
+            }
+            if (result.isConnectable) {
                 stopScan()
-                                BikeState.add("Found $name ${result.device.address} connectable=${result.isConnectable} raw=" +
-                    (result.scanRecord?.bytes?.joinToString("") { "%02X".format(it) } ?: "none"))
                 connect(result.device)
+            } else {
+                val b = bestNonConnectable
+                if (b == null || result.rssi > b.rssi) bestNonConnectable = result
             }
         }
 
@@ -211,11 +227,11 @@ class BikeService : Service() {
         }
     }
 
-    private fun connect(device: BluetoothDevice) {
+    private fun connect(device: BluetoothDevice, auto: Boolean = false) {
         BikeState.status = "Connecting..."
         closeGatt()
-        gatt = device.connectGatt(this, true, gattCallback, BluetoothDevice.TRANSPORT_LE)
-        handler.postDelayed(connectTimeout, 90000)
+        gatt = device.connectGatt(this, auto, gattCallback, BluetoothDevice.TRANSPORT_LE)
+        handler.postDelayed(connectTimeout, if (auto) 90000L else 20000L)
     }
 
     private fun closeGatt() {
@@ -343,7 +359,7 @@ class BikeService : Service() {
         when {
             short == BUTTONS && hex == VOL_UP -> volume(true)
             short == BUTTONS && hex == VOL_DOWN -> volume(false)
-                        short == BUTTONS && (hex == "01-17-03" || hex == "01-17-04") -> playPause()
+            short == BUTTONS && (hex == "01-17-03" || hex == "01-17-04") -> playPause()
             short == BUTTONS && hex == "01-17-01" -> mediaKey(KeyEvent.KEYCODE_MEDIA_NEXT, "Next track")
             short == BUTTONS && hex == "01-17-02" -> volume(false)
             key == BikeState.learnedKey -> playPause()
@@ -359,7 +375,7 @@ class BikeService : Service() {
         BikeState.lastAction = if (up) "Volume up" else "Volume down"
     }
 
-            private fun mediaKey(code: Int, label: String) {
+    private fun mediaKey(code: Int, label: String) {
         audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code))
         audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, code))
         BikeState.lastAction = label
