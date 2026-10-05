@@ -183,7 +183,7 @@ class BikeService : Service() {
         scanning = true
         scanner.startScan(
             null,
-            connectable=${result.isConnectable} legacy=${result.isLegacy} rssi=,
+            ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).setLegacy(false).build(),
             scanCallback
         )
         handler.postDelayed(scanTimeout, 15000)
@@ -209,7 +209,7 @@ class BikeService : Service() {
             val key = "${result.device.address}|${result.isConnectable}"
             if (seen.add(key)) {
                 val raw = result.scanRecord?.bytes?.take(32)?.joinToString("") { "%02X".format(it) }
-                BikeState.add("Seen $name ${result.device.address} connectable=${result.isConnectable} rssi=${result.rssi} raw=$raw")
+                BikeState.add("Seen $name ${result.device.address} connectable=${result.isConnectable} legacy=${result.isLegacy} rssi=${result.rssi} raw=$raw")
             }
             if (result.isConnectable) {
                 stopScan()
