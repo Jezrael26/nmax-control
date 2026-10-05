@@ -342,6 +342,9 @@ class BikeService : Service() {
         when {
             short == BUTTONS && hex == VOL_UP -> volume(true)
             short == BUTTONS && hex == VOL_DOWN -> volume(false)
+                        short == BUTTONS && (hex == "01-17-03" || hex == "01-17-04") -> playPause()
+            short == BUTTONS && hex == "01-17-01" -> mediaKey(KeyEvent.KEYCODE_MEDIA_NEXT, "Next track")
+            short == BUTTONS && hex == "01-17-02" -> mediaKey(KeyEvent.KEYCODE_MEDIA_PREVIOUS, "Previous track")
             key == BikeState.learnedKey -> playPause()
         }
     }
@@ -355,9 +358,13 @@ class BikeService : Service() {
         BikeState.lastAction = if (up) "Volume up" else "Volume down"
     }
 
+            private fun mediaKey(code: Int, label: String) {
+        audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, code))
+        audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, code))
+        BikeState.lastAction = label
+    }
+
     private fun playPause() {
-        audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE))
-        audio.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE))
-        BikeState.lastAction = "Play/Pause"
+        mediaKey(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, "Play/Pause")
     }
 }
