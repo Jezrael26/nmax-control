@@ -719,30 +719,26 @@ class BikeService : Service() {
             }
 
             override fun onDescriptorWrite(
-                g: BluetoothGatt,
-                d: BluetoothGattDescriptor,
-                status: Int
-            ) {
+    g: BluetoothGatt,
+    d: BluetoothGattDescriptor,
+    status: Int
+) {
+    if (gatt !== g) return
 
-                if (gatt !== g) return
+    BikeState.add(
+        "Descriptor write: " +
+            "${d.uuid} " +
+            "status=$status"
+    )
 
-                BikeState.add(
-                    "Descriptor write: " +
-                        "${d.characteristicUuid} " +
-                        "status=$status"
-                )
+    if (status != BluetoothGatt.GATT_SUCCESS) {
+        BikeState.add(
+            "Descriptor write failed"
+        )
+    }
 
-                if (
-                    status !=
-                    BluetoothGatt.GATT_SUCCESS
-                ) {
-                    BikeState.add(
-                        "Descriptor write failed"
-                    )
-                }
-
-                subscribeNext(g)
-            }
+    subscribeNext(g)
+}
 
             // Android 13+
             override fun onCharacteristicChanged(
