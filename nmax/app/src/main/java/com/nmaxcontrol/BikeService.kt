@@ -288,18 +288,57 @@ class BikeService : Service() {
         }
 
         override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
-            val svc = g.getService(SERVICE_UUID)
-            if (svc == null) {
-                BikeState.add("Bike service not found (status $status)")
-                g.disconnect()
-                return
-            }
-            pending.clear()
-            for (u in NOTIFY_UUIDS) {
-                svc.getCharacteristic(u)?.let { pending.addLast(it) }
-            }
-            subscribeNext(g)
+    if (gatt !== g) return
+
+    BikeState.add("Services discovered: status=$status")
+
+    if (status != BluetoothGatt.GATT_SUCCESS) {
+        BikeState.add("Service discovery failed: $status")
+        g.disconnect()
+        return
+    }
+
+    val svc = g.getService(SERVICE_UUID)
+
+    if (svc == null) {
+        BikeState.add("Bike service NOT found: $SERVICE_UUID")
+        BikeState.add(
+            "Available services: " +
+                g.services.joinToString { it.uuid.toString() }
+        )
+        g.disconnect()
+        return
+    }
+
+    BikeState.add("NMAX service FOUND: ${svc.uuid}")
+
+    pending.clear()
+
+    for (u in NOTIFY_UUIDS) {
+        val ch = svc.getCharacteristic(u)
+
+        if (ch != null) {
+            BikeState.add("Characteristic FOUND: ${ch.uuid}")
+            pending.addLast(ch)
+        } else {
+            BikeState.add("Characteristic missing: $u")
         }
+    }
+
+    BikeState.add("Requesting MTU 512...")
+
+    val mtuStarted = try {
+        g.requestMtu(512)
+    } catch (e: Exception) {
+        BikeState.add("MTU request exception: ${e.message}")
+        false
+    }
+
+    if (!mtuStarted) {
+        BikeState.add("MTU request could not start; continuing")
+        subscribeNext(g)
+    }
+}
 
         override fun onDescriptorWrite(g: BluetoothGatt, d: BluetoothGattDescriptor, status: Int) {
             subscribeNext(g)
