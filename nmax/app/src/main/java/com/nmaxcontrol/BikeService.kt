@@ -198,7 +198,8 @@ class BikeService : Service() {
             val hasService = result.scanRecord?.serviceUuids?.any { it.uuid == SERVICE_UUID } == true
             if (name?.startsWith(NAME_PREFIX) == true || hasService) {
                 stopScan()
-                BikeState.add("Found $name ${result.device.address}")
+                                BikeState.add("Found $name ${result.device.address} connectable=${result.isConnectable} raw=" +
+                    (result.scanRecord?.bytes?.joinToString("") { "%02X".format(it) } ?: "none"))
                 connect(result.device)
             }
         }
