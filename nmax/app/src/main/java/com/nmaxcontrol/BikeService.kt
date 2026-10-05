@@ -143,6 +143,16 @@ class BikeService : Service() {
             retry(3000)
             return
         }
+                val mgr = getSystemService(BLUETOOTH_SERVICE) as BluetoothManager
+        val live = mgr.getConnectedDevices(BluetoothProfile.GATT)
+        BikeState.add("Phone-connected devices: " + live.joinToString { "${it.name}/${it.address}" })
+        BikeState.add("Paired devices: " + (a.bondedDevices ?: emptySet()).joinToString { "${it.name}/${it.address}" })
+        val joined = live.firstOrNull { it.name?.startsWith(NAME_PREFIX) == true }
+        if (joined != null) {
+            BikeState.add("Bike is already connected to this phone, joining")
+            connect(joined)
+            return
+        }
         val bonded = a.bondedDevices?.firstOrNull { it.name?.startsWith(NAME_PREFIX) == true }
         val useBonded = bonded != null && attempt % 2 == 0
         attempt++
