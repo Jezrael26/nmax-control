@@ -72,7 +72,8 @@ class BikeService : Service() {
 
     private var bestNonConnectable: ScanResult? = null
 
-    private val pending = ArrayDeque<BluetoothGattCharacteristic>()
+    private val pending =
+        ArrayDeque<BluetoothGattCharacteristic>()
 
     private lateinit var audio: AudioManager
 
@@ -80,31 +81,43 @@ class BikeService : Service() {
         findBike()
     }
 
+    /*
+     * IMPORTANT:
+     * Non-connectable advertisements are recorded only.
+     * We DO NOT call connectGatt() on them.
+     */
     private val scanTimeout = Runnable {
-    if (scanning) {
-        stopScan()
+        if (scanning) {
 
-        val fb = bestNonConnectable
-        if (fb != null) {
+            stopScan()
+
+            val fb = bestNonConnectable
+
+            if (fb != null) {
+                BikeState.add(
+                    "Found only non-connectable advertisement; " +
+                        "NOT attempting GATT connection: " +
+                        fb.device.address
+                )
+            }
+
             BikeState.add(
-                "Found only non-connectable advertisement; " +
-                "NOT attempting GATT connection: ${fb.device.address}"
+                "No connectable BLE advertisement found"
             )
+
+            retry(1000)
         }
-
-        BikeState.add(
-            "No connectable BLE advertisement found"
-        )
-
-        retry(1000)
-    }
-}
     }
 
     private val connectTimeout = Runnable {
         if (!connected) {
-            BikeState.add("Connect timeout, trying again")
+
+            BikeState.add(
+                "Connect timeout, trying again"
+            )
+
             closeGatt()
+
             retry(500)
         }
     }
@@ -114,14 +127,19 @@ class BikeService : Service() {
     override fun onCreate() {
         super.onCreate()
 
-        audio = getSystemService(AUDIO_SERVICE) as AudioManager
+        audio =
+            getSystemService(AUDIO_SERVICE)
+                as AudioManager
 
         adapter =
-            (getSystemService(BLUETOOTH_SERVICE) as BluetoothManager).adapter
+            (getSystemService(BLUETOOTH_SERVICE)
+                as BluetoothManager).adapter
 
         BikeState.learnedKey =
-            getSharedPreferences("nmax", MODE_PRIVATE)
-                .getString("learned", null)
+            getSharedPreferences(
+                "nmax",
+                MODE_PRIVATE
+            ).getString("learned", null)
     }
 
     override fun onStartCommand(
@@ -132,12 +150,13 @@ class BikeService : Service() {
 
         startAsForeground()
 
-        val chosen = intent?.getStringExtra("address")
+        val chosen =
+            intent?.getStringExtra("address")
 
         if (!BikeState.running) {
+
             BikeState.running = true
             BikeState.status = "Starting..."
-
             BikeState.add("Service started")
 
             if (chosen == null) {
@@ -147,13 +166,17 @@ class BikeService : Service() {
 
         if (chosen != null) {
 
-            handler.removeCallbacks(retryRunnable)
+            handler.removeCallbacks(
+                retryRunnable
+            )
 
             stopScan()
 
-            val dev = adapter?.getRemoteDevice(chosen)
+            val dev =
+                adapter?.getRemoteDevice(chosen)
 
             if (dev != null) {
+
                 BikeState.add(
                     "Connecting to the chosen device $chosen"
                 )
@@ -182,15 +205,15 @@ class BikeService : Service() {
         super.onDestroy()
     }
 
-    // ---------------------------------------------------------
+    // =========================================================
     // FOREGROUND SERVICE
-    // ---------------------------------------------------------
+    // =========================================================
 
     private fun startAsForeground() {
 
         val nm =
             getSystemService(NOTIFICATION_SERVICE)
-                    as NotificationManager
+                as NotificationManager
 
         nm.createNotificationChannel(
             NotificationChannel(
@@ -200,19 +223,26 @@ class BikeService : Service() {
             )
         )
 
-        val pi = PendingIntent.getActivity(
-            this,
-            0,
-            Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE
-        )
+        val pi =
+            PendingIntent.getActivity(
+                this,
+                0,
+                Intent(this, MainActivity::class.java),
+                PendingIntent.FLAG_IMMUTABLE
+            )
 
         val n =
-            Notification.Builder(this, CHANNEL_ID)
+            Notification.Builder(
+                this,
+                CHANNEL_ID
+            )
                 .setContentTitle("NMAX Control")
-                .setContentText("Listening to the bike buttons")
+                .setContentText(
+                    "Listening to the bike buttons"
+                )
                 .setSmallIcon(
-                    android.R.drawable.stat_sys_data_bluetooth
+                    android.R.drawable
+                        .stat_sys_data_bluetooth
                 )
                 .setContentIntent(pi)
                 .setOngoing(true)
@@ -223,7 +253,8 @@ class BikeService : Service() {
             startForeground(
                 1,
                 n,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+                ServiceInfo
+                    .FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
             )
 
         } else {
@@ -232,13 +263,15 @@ class BikeService : Service() {
         }
     }
 
-    // ---------------------------------------------------------
+    // =========================================================
     // RETRY
-    // ---------------------------------------------------------
+    // =========================================================
 
     private fun retry(ms: Long) {
 
-        handler.removeCallbacks(retryRunnable)
+        handler.removeCallbacks(
+            retryRunnable
+        )
 
         handler.postDelayed(
             retryRunnable,
@@ -246,9 +279,9 @@ class BikeService : Service() {
         )
     }
 
-    // ---------------------------------------------------------
+    // =========================================================
     // FIND BIKE
-    // ---------------------------------------------------------
+    // =========================================================
 
     private fun findBike() {
 
@@ -268,7 +301,7 @@ class BikeService : Service() {
 
         val mgr =
             getSystemService(BLUETOOTH_SERVICE)
-                    as BluetoothManager
+                as BluetoothManager
 
         val live =
             mgr.getConnectedDevices(
@@ -293,7 +326,10 @@ class BikeService : Service() {
                 "Bike is already connected to this phone, joining"
             )
 
-            connect(joined, true)
+            connect(
+                joined,
+                true
+            )
 
             return
         }
@@ -304,7 +340,8 @@ class BikeService : Service() {
             }
 
         val useBonded =
-            bonded != null && attempt % 2 == 0
+            bonded != null &&
+                attempt % 2 == 0
 
         attempt++
 
@@ -314,7 +351,10 @@ class BikeService : Service() {
                 "Trying paired device ${bonded.address}"
             )
 
-            connect(bonded, true)
+            connect(
+                bonded,
+                true
+            )
 
         } else {
 
@@ -322,9 +362,9 @@ class BikeService : Service() {
         }
     }
 
-    // ---------------------------------------------------------
+    // =========================================================
     // BLE SCAN
-    // ---------------------------------------------------------
+    // =========================================================
 
     private fun startScan() {
 
@@ -332,6 +372,10 @@ class BikeService : Service() {
             adapter?.bluetoothLeScanner
 
         if (scanner == null) {
+
+            BikeState.add(
+                "BLE scanner unavailable"
+            )
 
             retry(3000)
 
@@ -347,12 +391,20 @@ class BikeService : Service() {
 
         scanning = true
 
-        BikeState.add("BLE scan started")
+        BikeState.add(
+            "BLE scan started"
+        )
 
         /*
-         * IMPORTANT:
-         * Do not force legacy=false.
-         * The NMAX advertisement we observed can be legacy.
+         * Do NOT use setLegacy(false).
+         *
+         * The NMAX advertisement we observed is:
+         *
+         * legacy=true
+         * connectable=false
+         *
+         * We therefore allow both legacy and modern
+         * advertisements to be observed.
          */
 
         scanner.startScan(
@@ -377,7 +429,9 @@ class BikeService : Service() {
 
         scanning = false
 
-        handler.removeCallbacks(scanTimeout)
+        handler.removeCallbacks(
+            scanTimeout
+        )
 
         try {
 
@@ -387,7 +441,7 @@ class BikeService : Service() {
 
         } catch (e: Exception) {
 
-            // ignore
+            // Ignore scanner stop errors.
         }
     }
 
@@ -420,7 +474,8 @@ class BikeService : Service() {
                 }
 
                 val key =
-                    "${result.device.address}|${result.isConnectable}"
+                    "${result.device.address}|" +
+                        "${result.isConnectable}"
 
                 if (seen.add(key)) {
 
@@ -435,23 +490,53 @@ class BikeService : Service() {
                     BikeState.add(
                         "Seen $name " +
                             "${result.device.address} " +
-                            "connectable=${result.isConnectable} " +
-                            "legacy=${result.isLegacy} " +
-                            "rssi=${result.rssi} " +
+                            "connectable=" +
+                            "${result.isConnectable} " +
+                            "legacy=" +
+                            "${result.isLegacy} " +
+                            "rssi=" +
+                            "${result.rssi} " +
                             "raw=$raw"
                     )
                 }
 
-               if (result.isConnectable) {
-    stopScan()
-    connect(result.device)
-} else {
-    val b = bestNonConnectable
+                /*
+                 * ONLY connect if Android reports the
+                 * advertisement as connectable.
+                 */
+                if (result.isConnectable) {
 
-    if (b == null || result.rssi > b.rssi) {
-        bestNonConnectable = result
-    }
-}
+                    stopScan()
+
+                    BikeState.add(
+                        "Connectable advertisement found"
+                    )
+
+                    connect(
+                        result.device
+                    )
+
+                } else {
+
+                    /*
+                     * Record the strongest non-connectable
+                     * advertisement for diagnostics only.
+                     *
+                     * DO NOT connect to it.
+                     */
+
+                    val b =
+                        bestNonConnectable
+
+                    if (
+                        b == null ||
+                        result.rssi > b.rssi
+                    ) {
+
+                        bestNonConnectable =
+                            result
+                    }
+                }
             }
 
             override fun onScanFailed(
@@ -468,9 +553,9 @@ class BikeService : Service() {
             }
         }
 
-    // ---------------------------------------------------------
+    // =========================================================
     // GATT CONNECT
-    // ---------------------------------------------------------
+    // =========================================================
 
     private fun connect(
         device: BluetoothDevice,
@@ -520,20 +605,20 @@ class BikeService : Service() {
             try {
                 g.disconnect()
             } catch (e: Exception) {
-                // ignore
+                // Ignore.
             }
 
             try {
                 g.close()
             } catch (e: Exception) {
-                // ignore
+                // Ignore.
             }
         }
     }
 
-    // ---------------------------------------------------------
+    // =========================================================
     // GATT CALLBACK
-    // ---------------------------------------------------------
+    // =========================================================
 
     private val gattCallback =
         object : BluetoothGattCallback() {
@@ -563,11 +648,6 @@ class BikeService : Service() {
                     BikeState.add(
                         "Connected (status $status)"
                     )
-
-                    /*
-                     * Give Android/BLE stack a short moment
-                     * before service discovery.
-                     */
 
                     handler.postDelayed({
 
@@ -602,15 +682,15 @@ class BikeService : Service() {
                         try {
                             g.close()
                         } catch (e: Exception) {
-                            // ignore
+                            // Ignore.
                         }
                     }
                 }
             }
 
-            // -------------------------------------------------
+            // =================================================
             // SERVICES DISCOVERED
-            // -------------------------------------------------
+            // =================================================
 
             override fun onServicesDiscovered(
                 g: BluetoothGatt,
@@ -664,9 +744,8 @@ class BikeService : Service() {
                 )
 
                 /*
-                 * Diagnostic:
-                 * show every characteristic and its
-                 * Android GATT properties.
+                 * Show every characteristic and its
+                 * GATT properties.
                  */
 
                 for (ch in svc.characteristics) {
@@ -702,9 +781,8 @@ class BikeService : Service() {
                 }
 
                 /*
-                 * SDMV analysis showed MTU 512 being requested.
-                 * We reproduce the standard BLE MTU negotiation,
-                 * without reproducing proprietary authentication.
+                 * Request the same MTU size observed
+                 * in the SDMV application's behavior.
                  */
 
                 BikeState.add(
@@ -737,9 +815,9 @@ class BikeService : Service() {
                 }
             }
 
-            // -------------------------------------------------
+            // =================================================
             // MTU RESULT
-            // -------------------------------------------------
+            // =================================================
 
             override fun onMtuChanged(
                 g: BluetoothGatt,
@@ -770,17 +848,12 @@ class BikeService : Service() {
                     )
                 }
 
-                /*
-                 * Continue to notification setup after MTU
-                 * callback completes.
-                 */
-
                 subscribeNext(g)
             }
 
-            // -------------------------------------------------
+            // =================================================
             // DESCRIPTOR WRITE
-            // -------------------------------------------------
+            // =================================================
 
             override fun onDescriptorWrite(
                 g: BluetoothGatt,
@@ -810,9 +883,9 @@ class BikeService : Service() {
                 subscribeNext(g)
             }
 
-            // -------------------------------------------------
-            // CHARACTERISTIC CHANGED - ANDROID 13+
-            // -------------------------------------------------
+            // =================================================
+            // CHARACTERISTIC CHANGED - API 33+
+            // =================================================
 
             override fun onCharacteristicChanged(
                 g: BluetoothGatt,
@@ -833,9 +906,9 @@ class BikeService : Service() {
                 )
             }
 
-            // -------------------------------------------------
-            // CHARACTERISTIC CHANGED - ANDROID 12 AND BELOW
-            // -------------------------------------------------
+            // =================================================
+            // CHARACTERISTIC CHANGED - OLD API
+            // =================================================
 
             override fun onCharacteristicChanged(
                 g: BluetoothGatt,
@@ -862,9 +935,9 @@ class BikeService : Service() {
             }
         }
 
-    // ---------------------------------------------------------
+    // =========================================================
     // NOTIFICATION SETUP
-    // ---------------------------------------------------------
+    // =========================================================
 
     private fun subscribeNext(
         g: BluetoothGatt
@@ -964,9 +1037,9 @@ class BikeService : Service() {
         }
     }
 
-    // ---------------------------------------------------------
+    // =========================================================
     // NOTIFICATION LOG
-    // ---------------------------------------------------------
+    // =========================================================
 
     private fun logNotification(
         uuid: UUID,
@@ -979,13 +1052,13 @@ class BikeService : Service() {
             }
 
         BikeState.add(
-            "NOTIFY ${uuid}: $hex"
+            "NOTIFY $uuid: $hex"
         )
     }
 
-    // ---------------------------------------------------------
+    // =========================================================
     // BIKE PACKETS
-    // ---------------------------------------------------------
+    // =========================================================
 
     private fun handlePacket(
         uuid: UUID,
@@ -1096,9 +1169,9 @@ class BikeService : Service() {
         }
     }
 
-    // ---------------------------------------------------------
+    // =========================================================
     // MEDIA CONTROL
-    // ---------------------------------------------------------
+    // =========================================================
 
     private fun volume(
         up: Boolean
