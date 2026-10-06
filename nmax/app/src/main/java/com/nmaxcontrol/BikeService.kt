@@ -81,23 +81,24 @@ class BikeService : Service() {
     }
 
     private val scanTimeout = Runnable {
-        if (scanning) {
-            stopScan()
+    if (scanning) {
+        stopScan()
 
-            val fb = bestNonConnectable
-
-            if (fb != null) {
-                BikeState.add(
-                    "No connectable advert seen, trying strongest one: " +
-                        fb.device.address
-                )
-
-                connect(fb.device)
-            } else {
-                BikeState.add("Bike not seen in scan, trying again")
-                retry(1000)
-            }
+        val fb = bestNonConnectable
+        if (fb != null) {
+            BikeState.add(
+                "Found only non-connectable advertisement; " +
+                "NOT attempting GATT connection: ${fb.device.address}"
+            )
         }
+
+        BikeState.add(
+            "No connectable BLE advertisement found"
+        )
+
+        retry(1000)
+    }
+}
     }
 
     private val connectTimeout = Runnable {
@@ -441,24 +442,16 @@ class BikeService : Service() {
                     )
                 }
 
-                if (result.isConnectable) {
+               if (result.isConnectable) {
+    stopScan()
+    connect(result.device)
+} else {
+    val b = bestNonConnectable
 
-                    stopScan()
-
-                    connect(result.device)
-
-                } else {
-
-                    val b =
-                        bestNonConnectable
-
-                    if (
-                        b == null ||
-                        result.rssi > b.rssi
-                    ) {
-                        bestNonConnectable = result
-                    }
-                }
+    if (b == null || result.rssi > b.rssi) {
+        bestNonConnectable = result
+    }
+}
             }
 
             override fun onScanFailed(
